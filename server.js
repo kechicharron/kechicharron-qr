@@ -109,6 +109,21 @@ async function updateOrderStatus(id, status, readyAt) {
   return rows[0] ? fromDatabase(rows[0]) : null;
 }
 
+async function deleteOrder(id) {
+  if (!supabaseOrdersUrl || !supabaseKey) {
+    const orders = readOrders();
+    const remaining = orders.filter(item => item.id !== id);
+    if (remaining.length === orders.length) return false;
+    saveOrders(remaining);
+    return true;
+  }
+  await databaseRequest({
+    method: 'DELETE',
+    requestUrl: `${supabaseOrdersUrl}?id=eq.${encodeURIComponent(id)}`
+  });
+  return true;
+}
+
 function sendJson(res, status, payload) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(payload));
@@ -194,6 +209,12 @@ const server = http.createServer(async (req, res) => {
       const order = await updateOrderStatus(statusMatch[1], status, status === 'ready' ? new Date().toISOString() : null);
       if (!order) return sendJson(res, 404, { error: 'Pedido no encontrado' });
       return sendJson(res, 200, order);
+    }
+    const deleteMatch = req.url.match(/^\/api\/orders\/([^/]+)$/);
+    if (deleteMatch && req.method === 'DELETE') {
+      const deleted = await deleteOrder(deleteMatch[1]);
+      if (!deleted) return sendJson(res, 404, { error: 'Pedido no encontrado' });
+      return sendJson(res, 200, { ok: true });
     }
     serveStatic(req, res);
   } catch (error) {
