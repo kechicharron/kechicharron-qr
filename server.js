@@ -33,7 +33,11 @@ function fromDatabase(row) {
     total: Number(row.total) || 0,
     status: row.status,
     createdAt: row.created_at,
-    readyAt: row.ready_at
+    readyAt: row.ready_at,
+    deliveryType: row.delivery_type || 'mesa',
+    paymentMethod: row.payment_method || 'efectivo',
+    address: row.address || '',
+    phone: row.phone || ''
   };
 }
 
@@ -46,7 +50,11 @@ function toDatabase(order) {
     total: order.total,
     status: order.status,
     created_at: order.createdAt,
-    ready_at: order.readyAt || null
+    ready_at: order.readyAt || null,
+    delivery_type: order.deliveryType || 'mesa',
+    payment_method: order.paymentMethod || 'efectivo',
+    address: order.address || '',
+    phone: order.phone || ''
   };
 }
 
@@ -155,22 +163,34 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.url === '/api/orders' && req.method === 'POST') {
       const data = await bodyFrom(req);
-      if (!data.table || !Array.isArray(data.items) || data.items.length === 0) return sendJson(res, 400, { error: 'Mesa y productos son obligatorios' });
+      const deliveryType = data.deliveryType === 'domicilio' ? 'domicilio' : 'mesa';
+      const hasItems = Array.isArray(data.items) && data.items.length > 0;
+      if (!hasItems) return sendJson(res, 400, { error: 'Los productos son obligatorios' });
+      if (deliveryType === 'domicilio') {
+        if (!data.address || !data.phone) return sendJson(res, 400, { error: 'La dirección y el celular del domicilio son obligatorios' });
+      } else if (!data.table || !String(data.table).trim()) {
+        return sendJson(res, 400, { error: 'La mesa es obligatoria' });
+      }
       const order = {
         id: crypto.randomUUID(),
-        table: String(data.table).trim(),
+        table: String(data.table || 'Domicilio').trim() || 'Domicilio',
         note: String(data.note || '').trim(),
         items: data.items,
         total: Number(data.total) || 0,
         status: 'pending',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        deliveryType,
+        paymentMethod: data.paymentMethod || 'efectivo',
+        address: String(data.address || '').trim(),
+        phone: String(data.phone || '').trim()
       };
       return sendJson(res, 201, await createOrder(order));
     }
     const statusMatch = req.url.match(/^\/api\/orders\/([^/]+)\/status$/);
     if (statusMatch && req.method === 'PATCH') {
       const data = await bodyFrom(req);
-      const status = data.status === 'ready' ? 'ready' : 'pending';
+      const validStatuses = ['pending', 'ready', 'delivered', 'cancelled'];
+      const status = validStatuses.includes(data.status) ? data.status : 'pending';
       const order = await updateOrderStatus(statusMatch[1], status, status === 'ready' ? new Date().toISOString() : null);
       if (!order) return sendJson(res, 404, { error: 'Pedido no encontrado' });
       return sendJson(res, 200, order);
