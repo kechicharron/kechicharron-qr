@@ -1,3 +1,11 @@
+const paymentConfig = {
+  nequi: { label: 'Nequi', help: 'Paga con Nequi y confirma el pago en WhatsApp.', appLink: 'nequi://', fallback: 'https://www.nequi.com.co/' },
+  daviplata: { label: 'Daviplata', help: 'Paga con Daviplata y confirma el pago en WhatsApp.' },
+  breb: { label: 'BRE-B / transferencia', help: 'Haz la transferencia y confirma el comprobante en WhatsApp.' },
+  efectivo: { label: 'Efectivo', help: 'Paga en efectivo al recibir el pedido.' }
+};
+const brebNumber = '0087273238';
+
 const menu = [
   { category: 'Favoritos', name: 'Patacón relleno', description: 'Pollo, cerdo, butifarra, mozzarella, maíz y salsas.', price: 20000, image: 'patacon relleno .jpg' },
   { category: 'Chicharrones', name: 'Chicharrón personal', description: 'Con yuca o patacones y suero.', price: 17000, image: 'chicharron de 17mil.jpg' },
@@ -69,7 +77,58 @@ function initMenu() {
   document.getElementById('close-cart').addEventListener('click', () => document.getElementById('cart-drawer').classList.remove('open'));
   document.getElementById('checkout-button').addEventListener('click', () => { if (!getCart().length) return toast('Agrega al menos un producto'); document.getElementById('checkout-modal').hidden = false; });
   document.getElementById('close-checkout').addEventListener('click', () => document.getElementById('checkout-modal').hidden = true);
+  document.querySelectorAll('input[name="delivery-type"]').forEach(radio => radio.addEventListener('change', toggleDeliveryFields));
+  document.getElementById('payment-method').addEventListener('change', updatePaymentInfo);
+  document.getElementById('copy-breb').addEventListener('click', copyBrebNumber);
+  const nequiLink = document.querySelector('[data-payment="nequi"]');
+  if (nequiLink) {
+    nequiLink.addEventListener('click', event => {
+      event.preventDefault();
+      const nequiApp = 'nequi://';
+      window.location.href = nequiApp;
+      window.setTimeout(() => { window.location.href = 'https://www.nequi.com.co/'; }, 1200);
+    });
+  }
   document.getElementById('order-form').addEventListener('submit', submitOrder);
+  updatePaymentInfo();
+  toggleDeliveryFields();
+}
+function updatePaymentInfo() {
+  const method = document.getElementById('payment-method').value;
+  const info = document.getElementById('payment-info');
+  const number = document.getElementById('breb-number');
+  if (method === 'breb') {
+    info.hidden = false;
+    number.textContent = brebNumber;
+    info.querySelector('p').textContent = 'Transfiere a la llave BRE-B de la empresa:';
+  } else if (method === 'nequi') {
+    info.hidden = false;
+    number.textContent = brebNumber;
+    info.querySelector('p').textContent = 'Paga por Nequi a la llave BRE-B de la empresa:';
+  } else if (method === 'daviplata') {
+    info.hidden = false;
+    number.textContent = brebNumber;
+    info.querySelector('p').textContent = 'Paga por Daviplata a la llave BRE-B de la empresa:';
+  } else {
+    info.hidden = true;
+  }
+}
+function copyBrebNumber() {
+  navigator.clipboard?.writeText(brebNumber.replace(/\s+/g, '')).then(() => toast('Número BRE-B copiado')).catch(() => toast('No se pudo copiar el número'));
+}
+function toggleDeliveryFields() {
+  const deliveryType = document.querySelector('input[name="delivery-type"]:checked')?.value || 'mesa';
+  document.getElementById('table-container').hidden = deliveryType === 'domicilio';
+  document.getElementById('delivery-container').hidden = deliveryType !== 'domicilio';
+  if (deliveryType === 'domicilio') {
+    document.getElementById('table-number').removeAttribute('required');
+    document.getElementById('delivery-address').setAttribute('required', 'required');
+    document.getElementById('customer-phone').setAttribute('required', 'required');
+  } else {
+    document.getElementById('table-number').setAttribute('required', 'required');
+    document.getElementById('delivery-address').removeAttribute('required');
+    document.getElementById('customer-phone').removeAttribute('required');
+  }
 }
 function updateCart() {
   const cart = getCart(); const list = document.getElementById('cart-items'); if (!list) return;
@@ -79,10 +138,32 @@ function updateCart() {
   list.onclick = event => { const button = event.target.closest('button'); if (!button) return; const current = getCart(); const row = current[button.dataset.index]; button.dataset.action === 'plus' ? row.quantity++ : row.quantity--; saveCart(current.filter(item => item.quantity > 0)); updateCart(); };
 }
 async function submitOrder(event) {
-  event.preventDefault(); const cart = getCart(); const total = cart.reduce((sum, row) => sum + row.price * row.quantity, 0);
-  const response = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ table: document.getElementById('table-number').value, note: document.getElementById('order-note').value, items: cart, total }) });
+  event.preventDefault();
+  const cart = getCart();
+  const total = cart.reduce((sum, row) => sum + row.price * row.quantity, 0);
+  const deliveryType = document.querySelector('input[name="delivery-type"]:checked')?.value || 'mesa';
+  const table = document.getElementById('table-number').value.trim();
+  const address = document.getElementById('delivery-address').value.trim();
+  const phone = document.getElementById('customer-phone').value.trim();
+  const paymentMethod = document.getElementById('payment-method').value;
+  const payload = {
+    table: deliveryType === 'domicilio' ? 'Domicilio' : table,
+    note: document.getElementById('order-note').value,
+    items: cart,
+    total,
+    deliveryType,
+    paymentMethod,
+    address,
+    phone
+  };
+  if (deliveryType === 'domicilio') {
+    if (!address || !phone) return toast('Completa dirección y celular para el domicilio');
+  } else if (!table) {
+    return toast('Escribe el número de la mesa');
+  }
+  const response = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   if (!response.ok) return toast('No se pudo enviar el pedido');
-  saveCart([]); updateCart(); document.getElementById('checkout-modal').hidden = true; document.getElementById('cart-drawer').classList.remove('open'); event.target.reset(); toast('Pedido enviado a cocina');
+  saveCart([]); updateCart(); document.getElementById('checkout-modal').hidden = true; document.getElementById('cart-drawer').classList.remove('open'); event.target.reset(); updatePaymentInfo(); toggleDeliveryFields(); toast(`Pedido enviado a cocina · ${paymentConfig[paymentMethod].label}`);
 }
 
 function initKitchen() {
@@ -91,14 +172,34 @@ function initKitchen() {
 }
 async function loadOrders() { const response = await fetch('/api/orders'); if (!response.ok) return; const orders = await response.json(); renderOrders(orders); }
 function renderOrders(orders) {
-  const pending = orders.filter(order => order.status !== 'ready'); const ready = orders.filter(order => order.status === 'ready');
+  const pending = orders.filter(order => order.status === 'pending');
+  const ready = orders.filter(order => order.status === 'ready');
   document.getElementById('pending-count').textContent = pending.length; document.getElementById('ready-count').textContent = ready.length;
-  const card = order => `<article class="order-card ${order.status === 'ready' ? 'ready' : ''}"><div class="order-meta"><span class="order-table">Mesa ${order.table}</span><span class="order-time">${new Date(order.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span></div><ul>${order.items.map(item => `<li><span>${item.quantity} × ${item.name}</span><span>${money(item.price * item.quantity)}</span></li>`).join('')}</ul>${order.note ? `<div class="order-note">Nota: ${order.note}</div>` : ''}<div class="order-total"><span>Total</span><strong>${money(order.total)}</strong></div><button class="ready-button" data-id="${order.id}" data-status="${order.status === 'ready' ? 'pending' : 'ready'}">${order.status === 'ready' ? 'Volver a pendientes' : 'Marcar como listo'}</button></article>`;
+  const card = order => {
+    const locationLabel = order.deliveryType === 'domicilio' ? `Domicilio: ${order.address || 'sin dirección'}` : `Mesa ${order.table}`;
+    const paymentLabel = paymentConfig[order.paymentMethod]?.label || 'Efectivo';
+    const actions = order.status === 'ready'
+      ? `<button class="ready-button delivered-button" data-id="${order.id}" data-status="delivered">Entregado</button>`
+      : `<div class="order-actions"><button class="ready-button" data-id="${order.id}" data-status="ready">Marcar como listo</button><button class="cancel-button" data-id="${order.id}" data-status="cancelled">✕ Cancelar pedido</button></div>`;
+    return `<article class="order-card ${order.status === 'ready' ? 'ready' : ''}"><div class="order-meta"><span class="order-table">${locationLabel}</span><span class="order-time">${new Date(order.createdAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span></div><div class="order-summary"><span>${paymentLabel}</span><span>${order.phone ? order.phone : 'Sin teléfono'}</span></div><ul>${order.items.map(item => `<li><span>${item.quantity} × ${item.name}</span><span>${money(item.price * item.quantity)}</span></li>`).join('')}</ul>${order.note ? `<div class="order-note">Nota: ${order.note}</div>` : ''}<div class="order-total"><span>Total</span><strong>${money(order.total)}</strong></div>${actions}</article>`;
+  };
   document.getElementById('pending-orders').innerHTML = pending.length ? pending.map(card).join('') : '<div class="empty-state">No hay pedidos pendientes.</div>';
   document.getElementById('ready-orders').innerHTML = ready.length ? ready.map(card).join('') : '<div class="empty-state">Los pedidos listos aparecerán aquí.</div>';
-  document.querySelectorAll('.ready-button').forEach(button => button.onclick = () => updateStatus(button.dataset.id, button.dataset.status));
+  document.querySelectorAll('.ready-button, .cancel-button').forEach(button => button.onclick = () => updateStatus(button.dataset.id, button.dataset.status));
 }
-async function updateStatus(id, status) { const response = await fetch(`/api/orders/${id}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }); if (response.ok) { toast(status === 'ready' ? 'Pedido marcado como listo' : 'Pedido devuelto a pendientes'); loadOrders(); } }
+async function updateStatus(id, status) {
+  const messageMap = {
+    ready: 'Pedido marcado como listo',
+    delivered: 'Pedido entregado',
+    cancelled: 'Pedido cancelado',
+    pending: 'Pedido devuelto a pendientes'
+  };
+  const response = await fetch(`/api/orders/${id}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+  if (response.ok) {
+    toast(messageMap[status] || 'Estado actualizado');
+    loadOrders();
+  }
+}
 
 function initReports() {
   const monthInput = document.getElementById('report-month');
@@ -111,7 +212,7 @@ async function loadReport() {
   const response = await fetch('/api/report-orders');
   if (!response.ok) return;
   const selectedMonth = document.getElementById('report-month').value;
-  const orders = (await response.json()).filter(order => order.status === 'ready' && order.createdAt.startsWith(selectedMonth));
+  const orders = (await response.json()).filter(order => (order.status === 'ready' || order.status === 'delivered') && order.createdAt.startsWith(selectedMonth));
   const products = {};
   orders.forEach(order => order.items.forEach(item => {
     if (!products[item.name]) products[item.name] = { quantity: 0, price: Number(item.price) || 0, total: 0 };
