@@ -208,6 +208,9 @@ async function updateStatus(id, status) {
       document.querySelector(`[data-id="${id}"]`)?.closest('.order-card')?.remove();
     }
     loadOrders();
+  } else {
+    const error = await response.json().catch(() => ({}));
+    toast(error.error || 'No se pudo actualizar el pedido');
   }
 }
 async function deleteOrder(id) {
