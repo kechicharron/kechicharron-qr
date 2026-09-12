@@ -161,8 +161,15 @@ async function submitOrder(event) {
   } else if (!table) {
     return toast('Escribe el número de la mesa');
   }
-  const response = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-  if (!response.ok) return toast('No se pudo enviar el pedido');
+  try {
+    const response = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      return toast(error.error || 'No se pudo enviar el pedido');
+    }
+  } catch {
+    return toast('No hay conexión con el servidor. Intenta de nuevo.');
+  }
   saveCart([]); updateCart(); document.getElementById('checkout-modal').hidden = true; document.getElementById('cart-drawer').classList.remove('open'); event.target.reset(); updatePaymentInfo(); toggleDeliveryFields(); toast(`Pedido enviado a cocina · ${paymentConfig[paymentMethod].label}`);
 }
 
