@@ -177,7 +177,7 @@ function initKitchen() {
   const clock = document.getElementById('kitchen-clock');
   const tick = () => clock.textContent = new Date().toLocaleString('es-CO', { weekday: 'long', hour: '2-digit', minute: '2-digit' }); tick(); setInterval(tick, 30000); loadOrders(); setInterval(loadOrders, 3000);
 }
-async function loadOrders() { const response = await fetch('/api/orders'); if (!response.ok) return; const orders = await response.json(); renderOrders(orders); }
+async function loadOrders() { const response = await fetch('/api/orders', { cache: 'no-store' }); if (!response.ok) return; const orders = await response.json(); renderOrders(orders); }
 function renderOrders(orders) {
   const pending = orders.filter(order => order.status === 'pending');
   const ready = orders.filter(order => order.status === 'ready');
@@ -192,19 +192,32 @@ function renderOrders(orders) {
   };
   document.getElementById('pending-orders').innerHTML = pending.length ? pending.map(card).join('') : '<div class="empty-state">No hay pedidos pendientes.</div>';
   document.getElementById('ready-orders').innerHTML = ready.length ? ready.map(card).join('') : '<div class="empty-state">Los pedidos listos aparecerán aquí.</div>';
-  document.querySelectorAll('.ready-button, .cancel-button').forEach(button => button.onclick = () => updateStatus(button.dataset.id, button.dataset.status));
+  document.querySelectorAll('.ready-button').forEach(button => button.onclick = () => updateStatus(button.dataset.id, button.dataset.status));
+  document.querySelectorAll('.cancel-button').forEach(button => button.onclick = () => deleteOrder(button.dataset.id));
 }
 async function updateStatus(id, status) {
   const messageMap = {
     ready: 'Pedido marcado como listo',
     delivered: 'Pedido entregado',
-    cancelled: 'Pedido cancelado',
     pending: 'Pedido devuelto a pendientes'
   };
   const response = await fetch(`/api/orders/${id}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
   if (response.ok) {
     toast(messageMap[status] || 'Estado actualizado');
+    if (status === 'delivered') {
+      document.querySelector(`[data-id="${id}"]`)?.closest('.order-card')?.remove();
+    }
     loadOrders();
+  }
+}
+async function deleteOrder(id) {
+  const response = await fetch(`/api/orders/${id}`, { method: 'DELETE' });
+  if (response.ok) {
+    document.querySelector(`[data-id="${id}"]`)?.closest('.order-card')?.remove();
+    toast('Pedido cancelado y eliminado');
+    loadOrders();
+  } else {
+    toast('No se pudo eliminar el pedido');
   }
 }
 
