@@ -4,11 +4,14 @@ const path = require('path');
 const crypto = require('crypto');
 
 const root = __dirname;
-const publicDir = path.join(root, 'public');
+const publicDir = fs.existsSync(path.join(root, 'index.html')) ? root : path.join(root, 'public');
 const ordersFile = path.join(root, 'orders.json');
 const port = process.env.PORT || 3000;
 const reportUser = process.env.REPORT_USER || 'admin';
 const reportPassword = process.env.REPORT_PASSWORD || 'cambiar-esta-clave';
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseOrdersUrl = supabaseUrl ? `${supabaseUrl.replace(/\/$/, '')}/rest/v1/orders` : '';
 
 if (!fs.existsSync(ordersFile)) fs.writeFileSync(ordersFile, '[]');
 
@@ -19,6 +22,83 @@ function readOrders() {
 
 function saveOrders(orders) {
   fs.writeFileSync(ordersFile, JSON.stringify(orders, null, 2));
+}
+
+function fromDatabase(row) {
+  return {
+    id: row.id,
+    table: row.table_number,
+    note: row.note || '',
+    items: row.items,
+    total: Number(row.total) || 0,
+    status: row.status,
+    createdAt: row.created_at,
+    readyAt: row.ready_at
+  };
+}
+
+function toDatabase(order) {
+  return {
+    id: order.id,
+    table_number: order.table,
+    note: order.note,
+    items: order.items,
+    total: order.total,
+    status: order.status,
+    created_at: order.createdAt,
+    ready_at: order.readyAt || null
+  };
+}
+
+async function databaseRequest(options = {}) {
+  const requestUrl = options.requestUrl || supabaseOrdersUrl;
+  const response = await fetch(requestUrl, {
+    ...options,
+    headers: {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    }
+  });
+  if (!response.ok) throw new Error(`Supabase respondió ${response.status}: ${await response.text()}`);
+  return response.status === 204 ? null : response.json();
+}
+
+async function getOrders() {
+  if (!supabaseOrdersUrl || !supabaseKey) return readOrders();
+  const rows = await databaseRequest({ method: 'GET', requestUrl: `${supabaseOrdersUrl}?select=*&order=created_at.desc` });
+  return rows.map(fromDatabase);
+}
+
+async function createOrder(order) {
+  if (!supabaseOrdersUrl || !supabaseKey) {
+    const orders = readOrders();
+    orders.unshift(order);
+    saveOrders(orders);
+    return order;
+  }
+  const rows = await databaseRequest({ method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(toDatabase(order)) });
+  return fromDatabase(rows[0]);
+}
+
+async function updateOrderStatus(id, status, readyAt) {
+  if (!supabaseOrdersUrl || !supabaseKey) {
+    const orders = readOrders();
+    const order = orders.find(item => item.id === id);
+    if (!order) return null;
+    order.status = status;
+    order.readyAt = readyAt;
+    saveOrders(orders);
+    return order;
+  }
+  const rows = await databaseRequest({
+    method: 'PATCH',
+    requestUrl: `${supabaseOrdersUrl}?id=eq.${encodeURIComponent(id)}`,
+    headers: { Prefer: 'return=representation' },
+    body: JSON.stringify({ status, ready_at: readyAt })
+  });
+  return rows[0] ? fromDatabase(rows[0]) : null;
 }
 
 function sendJson(res, status, payload) {
@@ -68,10 +148,10 @@ const server = http.createServer(async (req, res) => {
   try {
     if ((req.url === '/reportes.html' || req.url === '/api/report-orders') && !reportAuthorized(req, res)) return;
     if (req.url === '/api/report-orders' && req.method === 'GET') {
-      return sendJson(res, 200, readOrders());
+      return sendJson(res, 200, await getOrders());
     }
     if (req.url === '/api/orders' && req.method === 'GET') {
-      return sendJson(res, 200, readOrders());
+      return sendJson(res, 200, await getOrders());
     }
     if (req.url === '/api/orders' && req.method === 'POST') {
       const data = await bodyFrom(req);
@@ -85,20 +165,14 @@ const server = http.createServer(async (req, res) => {
         status: 'pending',
         createdAt: new Date().toISOString()
       };
-      const orders = readOrders();
-      orders.unshift(order);
-      saveOrders(orders);
-      return sendJson(res, 201, order);
+      return sendJson(res, 201, await createOrder(order));
     }
     const statusMatch = req.url.match(/^\/api\/orders\/([^/]+)\/status$/);
     if (statusMatch && req.method === 'PATCH') {
       const data = await bodyFrom(req);
-      const orders = readOrders();
-      const order = orders.find(item => item.id === statusMatch[1]);
+      const status = data.status === 'ready' ? 'ready' : 'pending';
+      const order = await updateOrderStatus(statusMatch[1], status, status === 'ready' ? new Date().toISOString() : null);
       if (!order) return sendJson(res, 404, { error: 'Pedido no encontrado' });
-      order.status = data.status === 'ready' ? 'ready' : 'pending';
-      order.readyAt = order.status === 'ready' ? new Date().toISOString() : null;
-      saveOrders(orders);
       return sendJson(res, 200, order);
     }
     serveStatic(req, res);
