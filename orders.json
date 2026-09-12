@@ -1,1 +1,80 @@
-[]
+[
+  {
+    "id": "877aa8ee-bb1b-4e9d-99be-e2797c4a5912",
+    "table": "3",
+    "note": "",
+    "items": [
+      {
+        "category": "Favoritos",
+        "name": "Patacón relleno",
+        "description": "Pollo, cerdo, butifarra, mozzarella, maíz y salsas.",
+        "price": 20000,
+        "image": "patacon relleno .jpg",
+        "quantity": 1
+      },
+      {
+        "category": "Chicharrones",
+        "name": "Chicharrón personal",
+        "description": "Con yuca o patacones y suero.",
+        "price": 17000,
+        "image": "chicharron de 17mil.jpg",
+        "quantity": 1
+      },
+      {
+        "category": "Chicharrones",
+        "name": "Chicharrón doble",
+        "description": "Una porción generosa para compartir.",
+        "price": 30000,
+        "image": "chicharron doble.jpg",
+        "quantity": 1
+      }
+    ],
+    "total": 67000,
+    "status": "delivered",
+    "createdAt": "2026-09-12T20:32:11.169Z",
+    "deliveryType": "mesa",
+    "paymentMethod": "efectivo",
+    "address": "",
+    "phone": "",
+    "readyAt": null
+  },
+  {
+    "id": "3e565521-1bec-4f83-828c-3d782b2c7547",
+    "table": "5",
+    "note": "",
+    "items": [
+      {
+        "category": "Chicharrones",
+        "name": "Chicharrón personal",
+        "description": "Con yuca o patacones y suero.",
+        "price": 17000,
+        "image": "chicharron de 17mil.jpg",
+        "quantity": 1
+      },
+      {
+        "category": "Favoritos",
+        "name": "Patacón relleno",
+        "description": "Pollo, cerdo, butifarra, mozzarella, maíz y salsas.",
+        "price": 20000,
+        "image": "patacon relleno .jpg",
+        "quantity": 1
+      },
+      {
+        "category": "Chicharrones",
+        "name": "Chicharrón doble",
+        "description": "Una porción generosa para compartir.",
+        "price": 30000,
+        "image": "chicharron doble.jpg",
+        "quantity": 1
+      }
+    ],
+    "total": 67000,
+    "status": "delivered",
+    "createdAt": "2026-09-12T20:31:24.333Z",
+    "deliveryType": "mesa",
+    "paymentMethod": "efectivo",
+    "address": "",
+    "phone": "",
+    "readyAt": null
+  }
+]
